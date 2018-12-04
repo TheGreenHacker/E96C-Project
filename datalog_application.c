@@ -277,7 +277,7 @@ void Accelero_Sensor_Handler( void *handle , uint32_t msTick, uint32_t *msTickSt
             {
                 /* Check for fornation here by detecting a large enough acceleration in the y-direction. Question: Should we have to wait tau seconds for y-motion? */
 
-                    if ((phi >= fornation_low)else if (msTick - *msTickStateChange <= tau))
+                    if ((phi >= fornation_low)&& (msTick - *msTickStateChange <= tau))
                     {
                         *state = 3;
                         *msTickStateChange = msTick;
