@@ -245,13 +245,13 @@ void Accelero_Sensor_Handler( void *handle , uint32_t msTick, uint32_t *msTickSt
             if (*state == 0)
             {
                 /* Runner's acceleration indicates his foot is inclining backwards to prepare for a forward stride. */
-                if (theta >= back_step_low && theta <= back_step_up)
+                if ((theta >= back_step_low && theta <= back_step_up)&& ((msTick - *msTickStateChange) <= tau))
                 {
                     *state = 1;
                     *msTickStateChange = msTick;
                 }
                 /* Runner decides not to propel himself backwards first but goes straight for the run. */
-                else if (theta > back_step_up && theta <= front_step_low)
+                else if ((theta > back_step_up && theta <= front_step_low)&& ((msTick - *msTickStateChange) <= tau))
                 {
                     *state = 2;
                     *msTickStateChange = msTick;
@@ -260,20 +260,14 @@ void Accelero_Sensor_Handler( void *handle , uint32_t msTick, uint32_t *msTickSt
             else if (*state == 1)
             {
                 /* If we detect a forward motion to stage 2 within the time frame tau, then transition to state 2. Otherwise, the angle of motion is not within range of any of the thresholds or the transition has timed out. */
-                if ((msTick - *msTickStateChange) <= tau)
-                {
-                    if (theta > back_step_up && theta <= front_step_low)
+
+                    if ((theta > back_step_up && theta <= front_step_low)&& ((msTick - *msTickStateChange) <= tau))
                     {
                         *state = 2;
                         *msTickStateChange = msTick;
                     }
-                    else
-                    {
-                        *state = 0;
-                        *msTickStateChange = msTick;
-                    }
-                }
-                else
+                
+               else if (msTick - *msTickStateChange > tau)
                 {
                     *state = 0;
                     *msTickStateChange = msTick;
@@ -282,18 +276,26 @@ void Accelero_Sensor_Handler( void *handle , uint32_t msTick, uint32_t *msTickSt
             else if (*state == 2)
             {
                 /* Check for fornation here by detecting a large enough acceleration in the y-direction. Question: Should we have to wait tau seconds for y-motion? */
-                if ((msTick - *msTickStateChange) <= tau)
-                {
-                    if (phi >= fornation_low)
+
+                    if ((phi >= fornation_low)else if (msTick - *msTickStateChange <= tau))
                     {
-                        sprintf( dataOut, "\n\n\r\t\tI Warning: Fornation detected!\n");
-                        CDC_Fill_Buffer(( uint8_t * )dataOut, strlen(dataOut));
+                        *state = 3;
+                        *msTickStateChange = msTick;
                     }
                     else if (theta >= back_step_low && theta <= back_step_up) // runner does not rest!
                     {
                         *state = 1;
                         *msTickStateChange = msTick;
                     }
+                
+                else if (*state == 3)
+                {
+                    if ((msTick - *msTickStateChange) <= tau)
+                    {
+                    sprintf( dataOut, "\n\n\r\t\tI Warning: Fornation detected!\n");
+                    CDC_Fill_Buffer(( uint8_t * )dataOut, strlen(dataOut));
+                    }
+                }
                 }
                 else
                 {
