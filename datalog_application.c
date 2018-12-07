@@ -179,18 +179,12 @@ void Accelero_Sensor_Handler( void *handle , uint32_t msTick, uint32_t *msTickSt
     int32_t d1, d2, d3, d4, d5, d6;
     
     uint32_t tau = 1000;
-    const float x_thresh = 300.0f;
-    const float yz_thresh = 1000.0f;
     const float RADIAN = 57.2957795;
     
-    /* state 1 angle thresholds*/
-    const float back_step_low = 45.0f;
-    const float back_step_up = 90.0f;
-    
-    /* state 2 angle thresholds */
-    // const float front_step_up = 90.0f;
-    const float front_step_low = 135.0f;
-    const float fornation_low = 12.0f;
+    /* angle thresholds in degrees */
+    const float thresh_low = 45.0f;
+    const float thresh_high = 90.0f;
+    const float fornation = -50.0f;
     
     BSP_ACCELERO_Get_Instance( handle, &id );
     
@@ -212,8 +206,8 @@ void Accelero_Sensor_Handler( void *handle , uint32_t msTick, uint32_t *msTickSt
             z = (float) acceleration.AXIS_Z;
             
             r = sqrt(x*x + y*y + z*z);
-            theta = acos(x/r)*RADIAN; // angle of acceleration with respect to x-axis
-            phi = atan2(x,y)*RADIAN; // angle of acceleration with respect to y-axis
+            theta = acos(z/r)*RADIAN;
+            phi = atan2(y,z)*RADIAN;
             
             floatToInt(r, &d1, &d2, 3);
             floatToInt(theta, &d3, &d4, 3);
@@ -240,35 +234,42 @@ void Accelero_Sensor_Handler( void *handle , uint32_t msTick, uint32_t *msTickSt
                     );
             CDC_Fill_Buffer((uint8_t *)dataOut, strlen(dataOut));
             
-            /* State 0: foot is at rest flat on the ground. Detect any changes in foot movement, forwards (state 2) or backwards (state 1).
-             */
-            if (*state == 0)
+            /* State 0: foot is at rest flat on the ground. Detect any changes in foot movement, forwards (state 2) or backwards (state 1).*/
+            if (*state == 0 && theta >= thresh_low && theta <= thresh_high)
             {
-                /* Runner's acceleration indicates his foot is inclining backwards to prepare for a forward stride. */
-                if ((theta >= back_step_low && theta <= back_step_up)&& ((msTick - *msTickStateChange) <= tau))
+                /* Runner is inclining backwards to prepare for a forward stride. */
+                if (y >= 0.0)
                 {
+                    sprintf( dataOut, "\n\n\r\t\tI Going to state 1\n");
+                    CDC_Fill_Buffer(( uint8_t * )dataOut, strlen(dataOut));
                     *state = 1;
                     *msTickStateChange = msTick;
                 }
                 /* Runner decides not to propel himself backwards first but goes straight for the run. */
-                else if ((theta > back_step_up && theta <= front_step_low)&& ((msTick - *msTickStateChange) <= tau))
+                else
                 {
+                    sprintf( dataOut, "\n\n\r\t\tI Going to state 2\n");
+                    CDC_Fill_Buffer(( uint8_t * )dataOut, strlen(dataOut));
                     *state = 2;
                     *msTickStateChange = msTick;
                 }
             }
             else if (*state == 1)
             {
-                /* If we detect a forward motion to stage 2 within the time frame tau, then transition to state 2. Otherwise, the angle of motion is not within range of any of the thresholds or the transition has timed out. */
-
-                    if ((theta > back_step_up && theta <= front_step_low)&& ((msTick - *msTickStateChange) <= tau))
-                    {
-                        *state = 2;
-                        *msTickStateChange = msTick;
-                    }
-                
-               else if (msTick - *msTickStateChange > tau)
+                /* If we detect a forward motion to stage 2, then transition to state 2.
+                 Otherwise, the angle of motion is not within range of any of the
+                 thresholds or the transition has timed out. */
+                if (y < 0.0 && theta >= thresh_low && theta <= thresh_high)
                 {
+                    sprintf( dataOut, "\n\n\r\t\tI Going to state 2\n");
+                    CDC_Fill_Buffer(( uint8_t * )dataOut, strlen(dataOut));
+                    *state = 2;
+                    *msTickStateChange = msTick;
+                }
+                else
+                {
+                    sprintf( dataOut, "\n\n\r\t\tI Going to state 0\n");
+                    CDC_Fill_Buffer(( uint8_t * )dataOut, strlen(dataOut));
                     *state = 0;
                     *msTickStateChange = msTick;
                 }
@@ -276,33 +277,36 @@ void Accelero_Sensor_Handler( void *handle , uint32_t msTick, uint32_t *msTickSt
             else if (*state == 2)
             {
                 /* Check for fornation here by detecting a large enough acceleration in the y-direction. Question: Should we have to wait tau seconds for y-motion? */
-
-                    if ((phi >= fornation_low)&& (msTick - *msTickStateChange <= tau))
-                    {
-                        *state = 3;
-                        *msTickStateChange = msTick;
-                    }
-                    else if (theta >= back_step_low && theta <= back_step_up) // runner does not rest!
-                    {
-                        *state = 1;
-                        *msTickStateChange = msTick;
-                    }
-                
-                else if (*state == 3)
+                if (phi <= fornation)
                 {
-                    if ((msTick - *msTickStateChange) <= tau)
-                    {
-                    sprintf( dataOut, "\n\n\r\t\tI Warning: Fornation detected!\n");
+                    sprintf( dataOut, "\n\n\r\t\tI Going to state 3\n");
                     CDC_Fill_Buffer(( uint8_t * )dataOut, strlen(dataOut));
-                    }
+                    *state = 3;
+                    *msTickStateChange = msTick;
                 }
-                }
-                else
+                else if (y >= 0.0 && theta >= thresh_low && theta <= thresh_high) // runner does not rest!
                 {
+                    sprintf( dataOut, "\n\n\r\t\tI Going to state 1\n");
+                    CDC_Fill_Buffer(( uint8_t * )dataOut, strlen(dataOut));
+                    *state = 1;
+                    *msTickStateChange = msTick;
+                }
+                else if (theta < thresh_low)
+                {
+                    sprintf( dataOut, "\n\n\r\t\tI Going to state 0\n");
+                    CDC_Fill_Buffer(( uint8_t * )dataOut, strlen(dataOut));
                     *state = 0;
                     *msTickStateChange = msTick;
                 }
+                
+                
+                if (*state == 3)
+                {
+                    sprintf( dataOut, "\n\n\r\t\tI Warning: Fornation detected!\n");
+                    CDC_Fill_Buffer(( uint8_t * )dataOut, strlen(dataOut));
+                }
             }
+
             
             if ( verbose == 1 )
             {
